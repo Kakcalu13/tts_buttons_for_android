@@ -12,4 +12,10 @@
         android:layout_height="wrap_content"
         android:text="Enable Accessibility Service" />
 
+    <Button
+        android:id="@+id/btn_test_overlay"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Test Overlay"/>
+
 </LinearLayout>

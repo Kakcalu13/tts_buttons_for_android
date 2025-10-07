@@ -8,12 +8,11 @@ import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
-import android.view.LayoutInflater
-import android.view.View
-import android.view.WindowManager
-import androidx.core.app.NotificationCompat
+import android.util.Log
+import android.view.*
 import android.widget.ImageButton
 import android.widget.Toast
+import androidx.core.app.NotificationCompat
 
 class OverlayService : Service() {
 
@@ -27,40 +26,52 @@ class OverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+
+        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+
+        Toast.makeText(this, "OverlayService started", Toast.LENGTH_SHORT).show()
+        Log.d("OverlayService", "onCreate() called")
+
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
 
-        // Only proceed if we have overlay permission
         if (!Settings.canDrawOverlays(this)) {
+            Toast.makeText(this, "Overlay permission missing, stopping", Toast.LENGTH_LONG).show()
+            Log.d("OverlayService", "Missing overlay permission, stopping")
             stopSelf()
             return
         }
 
-        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-
-        // Inflate your overlay layout
+        // Inflate the layout with four buttons
         overlayView = LayoutInflater.from(this)
             .inflate(R.layout.overlay_layout, null)
 
-        // Find each button in the overlay and set click behavior
         overlayView?.apply {
             findViewById<ImageButton>(R.id.btn_select_all).setOnClickListener {
+                Log.d("OverlayService", "Select All clicked")
                 MyAccessibilityService.getInstance()?.performSelectAll()
             }
             findViewById<ImageButton>(R.id.btn_read_aloud).setOnClickListener {
+                Log.d("OverlayService", "Read Aloud clicked")
                 val text = MyAccessibilityService.getInstance()?.getCurrentScreenText() ?: ""
-                Toast.makeText(this@OverlayService, text, Toast.LENGTH_SHORT).show()
-                // Or forward to TTS engine
+                Toast.makeText(this@OverlayService, "Reading: $text", Toast.LENGTH_SHORT).show()
+                Intent(Intent.ACTION_PROCESS_TEXT).apply {
+                    putExtra(Intent.EXTRA_PROCESS_TEXT, text)
+                    type = "text/plain"
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }.also(::startActivity)
             }
             findViewById<ImageButton>(R.id.btn_undo).setOnClickListener {
+                Log.d("OverlayService", "Undo clicked")
                 MyAccessibilityService.getInstance()?.performUndo()
             }
             findViewById<ImageButton>(R.id.btn_stop_tts).setOnClickListener {
+                Log.d("OverlayService", "Stop clicked, stopping service")
                 stopSelf()
             }
         }
 
-        // Layout parameters for the overlay window
+        // Center the overlay on screen
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -73,38 +84,43 @@ class OverlayService : Service() {
                     or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
-            // Position in the top-left; adjust x/y or gravity as desired
-            x = 0
-            y = 100
+            gravity = Gravity.CENTER
         }
 
-        // Add the view to the window
         windowManager.addView(overlayView, params)
+        Log.d("OverlayService", "Overlay view added")
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        overlayView?.let { windowManager.removeView(it) }
+        overlayView?.let {
+            try {
+                windowManager.removeView(it)
+                Log.d("OverlayService", "Overlay view removed")
+            } catch (e: IllegalArgumentException) {
+                Log.w("OverlayService", "Overlay view not attached, skipping removal")
+            }
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val chan = NotificationChannel(
+            NotificationChannel(
                 CHANNEL_ID,
                 "Overlay Service",
                 NotificationManager.IMPORTANCE_LOW
-            )
-            getSystemService(NotificationManager::class.java)
-                .createNotificationChannel(chan)
+            ).let { channel ->
+                getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+            }
         }
     }
 
     private fun buildNotification() =
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Overlay Active")
-            .setContentText("Tap stop button to remove overlay")
+            .setContentText("Use the buttons or tap Stop")
             .setSmallIcon(R.drawable.ic_overlay)
             .build()
 }

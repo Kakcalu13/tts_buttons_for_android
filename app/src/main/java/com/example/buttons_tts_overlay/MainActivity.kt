@@ -28,6 +28,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btn_enable_accessibility).setOnClickListener {
             checkAndRequestAccessibility()
         }
+        findViewById<Button>(R.id.btn_test_overlay).setOnClickListener {
+            startOverlay()
+        }
     }
 
     private fun checkAndRequestAccessibility() {
