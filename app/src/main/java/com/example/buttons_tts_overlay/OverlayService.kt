@@ -3,6 +3,9 @@ package com.example.buttons_tts_overlay
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.view.accessibility.AccessibilityNodeInfo
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
@@ -26,7 +29,6 @@ class OverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
         Toast.makeText(this, "OverlayService started", Toast.LENGTH_SHORT).show()
@@ -37,29 +39,46 @@ class OverlayService : Service() {
 
         if (!Settings.canDrawOverlays(this)) {
             Toast.makeText(this, "Overlay permission missing, stopping", Toast.LENGTH_LONG).show()
-            Log.d("OverlayService", "Missing overlay permission, stopping")
+            Log.d("OverlayService", "Missing overlay permission")
             stopSelf()
             return
         }
 
-        // Inflate the layout with four buttons
-        overlayView = LayoutInflater.from(this)
-            .inflate(R.layout.overlay_layout, null)
+        // Inflate the layout containing four buttons
+        overlayView = LayoutInflater.from(this).inflate(R.layout.overlay_layout, null)
 
         overlayView?.apply {
             findViewById<ImageButton>(R.id.btn_select_all).setOnClickListener {
                 Log.d("OverlayService", "Select All clicked")
-                MyAccessibilityService.getInstance()?.performSelectAll()
+                MyAccessibilityService.getInstance()?.performSelectAllAndCopy()
             }
             findViewById<ImageButton>(R.id.btn_read_aloud).setOnClickListener {
                 Log.d("OverlayService", "Read Aloud clicked")
-                val text = MyAccessibilityService.getInstance()?.getCurrentScreenText() ?: ""
-                Toast.makeText(this@OverlayService, "Reading: $text", Toast.LENGTH_SHORT).show()
-                Intent(Intent.ACTION_PROCESS_TEXT).apply {
-                    putExtra(Intent.EXTRA_PROCESS_TEXT, text)
-                    type = "text/plain"
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }.also(::startActivity)
+
+                // 1. Get the accessibility root and focused node
+                val rootNode = MyAccessibilityService.getInstance()?.rootInActiveWindow
+                if (rootNode == null) {
+                    Toast.makeText(this@OverlayService, "Accessibility root unavailable", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                val focusNode = rootNode.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+                if (focusNode == null) {
+                    Toast.makeText(this@OverlayService, "No input focused", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+
+                // 2. Read the focused node’s text directly
+                val selectedText = focusNode.text?.toString().orEmpty()
+                if (selectedText.isBlank()) {
+                    Toast.makeText(this@OverlayService, "Nothing selected", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this@OverlayService, "Reading: $selectedText", Toast.LENGTH_SHORT).show()
+                    Intent(Intent.ACTION_PROCESS_TEXT).apply {
+                        putExtra(Intent.EXTRA_PROCESS_TEXT, selectedText)
+                        type = "text/plain"
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }.also(this@OverlayService::startActivity)
+                }
             }
             findViewById<ImageButton>(R.id.btn_undo).setOnClickListener {
                 Log.d("OverlayService", "Undo clicked")
@@ -71,7 +90,6 @@ class OverlayService : Service() {
             }
         }
 
-        // Center the overlay on screen
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -107,11 +125,7 @@ class OverlayService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel(
-                CHANNEL_ID,
-                "Overlay Service",
-                NotificationManager.IMPORTANCE_LOW
-            ).let { channel ->
+            NotificationChannel(CHANNEL_ID, "Overlay Service", NotificationManager.IMPORTANCE_LOW).also { channel ->
                 getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
             }
         }
@@ -120,7 +134,7 @@ class OverlayService : Service() {
     private fun buildNotification() =
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Overlay Active")
-            .setContentText("Use the buttons or tap Stop")
+            .setContentText("Use buttons or tap Stop")
             .setSmallIcon(R.drawable.ic_overlay)
             .build()
 }
