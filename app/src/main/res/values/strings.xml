@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">buttons_tts_overlay</string>
+    <string name="accessibility_service_description">Overlay buttons accessibility service</string>
+</resources>

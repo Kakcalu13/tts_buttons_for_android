@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@drawable/overlay_background"
+    android:orientation="horizontal"
+    android:padding="8dp">
+
+    <ImageButton
+        android:id="@+id/btn_select_all"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_margin="4dp"
+        android:background="@drawable/button_background"
+        android:contentDescription="Select All"
+        android:src="@drawable/ic_select_all" />
+
+    <ImageButton
+        android:id="@+id/btn_read_aloud"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_margin="4dp"
+        android:background="@drawable/button_background"
+        android:contentDescription="Read Aloud"
+        android:src="@drawable/ic_volume_up" />
+
+    <ImageButton
+        android:id="@+id/btn_undo"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_margin="4dp"
+        android:background="@drawable/button_background"
+        android:contentDescription="Undo"
+        android:src="@drawable/ic_undo" />
+
+    <ImageButton
+        android:id="@+id/btn_stop_tts"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_margin="4dp"
+        android:background="@drawable/button_background"
+        android:contentDescription="Stop TTS"
+        android:src="@drawable/ic_stop" />
+
+</LinearLayout>
