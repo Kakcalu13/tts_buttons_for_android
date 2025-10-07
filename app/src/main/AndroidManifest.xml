@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
     package="com.example.buttons_tts_overlay">
 
-    <!-- Permissions -->
+    <!-- Permissions needed for overlay, accessibility, and foreground service -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -11,15 +10,13 @@
 
     <application
         android:allowBackup="true"
-        android:dataExtractionRules="@xml/data_extraction_rules"
-        android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Buttons_tts_overlay">
 
-        <!-- MainActivity -->
+        <!-- Main launcher activity -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -31,7 +28,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Overlay Service -->
+        <!-- Service that hosts the overlay buttons -->
         <service
             android:name=".OverlayService"
             android:enabled="true"
@@ -39,7 +36,7 @@
             android:permission="android.permission.FOREGROUND_SERVICE"
             android:foregroundServiceType="specialUse" />
 
-        <!-- Accessibility Service -->
+        <!-- Accessibility service for select-all, undo, and reading text -->
         <service
             android:name=".MyAccessibilityService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"

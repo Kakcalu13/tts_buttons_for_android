@@ -4,17 +4,21 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
 import android.widget.Button
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.example.buttons_tts_overlay.MyAccessibilityService
+import com.example.buttons_tts_overlay.OverlayService
 
 class MainActivity : AppCompatActivity() {
-
     companion object {
         private const val ACCESSIBILITY_PERMISSION_REQ_CODE = 1001
+        private const val OVERLAY_PERMISSION_REQ_CODE       = 1002
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -27,13 +31,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkAndRequestAccessibility() {
-        // Force applicationContext to non-nullable Context
-        val ctx: Context = applicationContext!!
-        if (isAccessibilityServiceEnabled(ctx, MyAccessibilityService::class.java)) {
-            Toast.makeText(this, "Accessibility Service already enabled", Toast.LENGTH_SHORT).show()
-            MyAccessibilityService.getInstance()?.let { service ->
-                // Example: service.performSelectAll()
-            }
+        if (isAccessibilityServiceEnabled()) {
+            Toast.makeText(this, "Accessibility enabled", Toast.LENGTH_SHORT).show()
+            requestOverlayPermission()
         } else {
             startActivityForResult(
                 Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS),
@@ -42,30 +42,61 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
+    private fun requestOverlayPermission() {
+        if (Settings.canDrawOverlays(this)) {
+            startOverlay()
+        } else {
+            startActivityForResult(
+                Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:$packageName")
+                ),
+                OVERLAY_PERMISSION_REQ_CODE
+            )
+        }
+    }
+
+
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == ACCESSIBILITY_PERMISSION_REQ_CODE) {
-            val ctx: Context = applicationContext!!
-            if (isAccessibilityServiceEnabled(ctx, MyAccessibilityService::class.java)) {
-                Toast.makeText(this, "Accessibility Service enabled", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, "Please enable Accessibility Service", Toast.LENGTH_LONG).show()
+        when (requestCode) {
+            ACCESSIBILITY_PERMISSION_REQ_CODE -> {
+                if (isAccessibilityServiceEnabled()) {
+                    Toast.makeText(this, "Accessibility enabled", Toast.LENGTH_SHORT).show()
+                    requestOverlayPermission()
+                } else {
+                    Toast.makeText(this, "Please enable Accessibility Service", Toast.LENGTH_LONG).show()
+                }
+            }
+            OVERLAY_PERMISSION_REQ_CODE -> {
+                if (Settings.canDrawOverlays(this)) {
+                    startOverlay()
+                } else {
+                    Toast.makeText(this, "Overlay permission required", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
 
-    /**
-     * Checks if the given AccessibilityService is enabled.
-     */
-    private fun isAccessibilityServiceEnabled(
-        context: Context,
-        serviceClass: Class<*>
-    ): Boolean {
-        val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+
+    private fun startOverlay() {
+        Intent(this, OverlayService::class.java).also { intent ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+        }
+    }
+
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val am = getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
         val enabledServices = am.getEnabledAccessibilityServiceList(
             AccessibilityServiceInfo.FEEDBACK_ALL_MASK
         )
-        val componentName = ComponentName(context, serviceClass)
+        val componentName = ComponentName(this, MyAccessibilityService::class.java)
         return enabledServices.any { enabled ->
             ComponentName.unflattenFromString(
                 enabled.resolveInfo.serviceInfo.name
