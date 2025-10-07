@@ -27,7 +27,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkAndRequestAccessibility() {
-        if (isAccessibilityServiceEnabled(applicationContext, MyAccessibilityService::class.java)) {
+        // Force applicationContext to non-nullable Context
+        val ctx: Context = applicationContext!!
+        if (isAccessibilityServiceEnabled(ctx, MyAccessibilityService::class.java)) {
             Toast.makeText(this, "Accessibility Service already enabled", Toast.LENGTH_SHORT).show()
             MyAccessibilityService.getInstance()?.let { service ->
                 // Example: service.performSelectAll()
@@ -43,7 +45,8 @@ class MainActivity : AppCompatActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == ACCESSIBILITY_PERMISSION_REQ_CODE) {
-            if (isAccessibilityServiceEnabled(applicationContext, MyAccessibilityService::class.java)) {
+            val ctx: Context = applicationContext!!
+            if (isAccessibilityServiceEnabled(ctx, MyAccessibilityService::class.java)) {
                 Toast.makeText(this, "Accessibility Service enabled", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(this, "Please enable Accessibility Service", Toast.LENGTH_LONG).show()
@@ -53,13 +56,11 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * Checks if the given AccessibilityService is enabled.
-     * Accepts a nullable Context to resolve platform-type mismatches.
      */
     private fun isAccessibilityServiceEnabled(
-        context: Context?,
+        context: Context,
         serviceClass: Class<*>
     ): Boolean {
-        if (context == null) return false
         val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
         val enabledServices = am.getEnabledAccessibilityServiceList(
             AccessibilityServiceInfo.FEEDBACK_ALL_MASK
