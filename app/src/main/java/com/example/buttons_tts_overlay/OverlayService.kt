@@ -118,10 +118,14 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
 
     override fun onDestroy() {
         super.onDestroy()
-        // Shutdown TTS
-        tts.stop()
-        tts.shutdown()
-        // … remove overlay …
+        overlayView?.let {
+            try {
+                windowManager.removeView(it)
+                Log.d("OverlayService", "Overlay view removed")
+            } catch (e: IllegalArgumentException) {
+                Log.w("OverlayService", "Overlay view not attached, skipping removal")
+            }
+        }
     }
 
     override fun onInit(status: Int) {
