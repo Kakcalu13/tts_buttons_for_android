@@ -5,7 +5,8 @@ import android.app.NotificationManager
 import android.app.Service
 import android.view.accessibility.AccessibilityNodeInfo
 import android.content.ClipboardManager
-import android.content.Context
+import java.util.Locale
+import android.speech.tts.TextToSpeech
 import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
@@ -17,19 +18,23 @@ import android.widget.ImageButton
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 
-class OverlayService : Service() {
+class OverlayService : Service(), TextToSpeech.OnInitListener {
 
     private lateinit var windowManager: WindowManager
+    private lateinit var tts: TextToSpeech
     private var overlayView: View? = null
 
     companion object {
         private const val CHANNEL_ID = "overlay_service_channel"
         private const val NOTIFICATION_ID = 1234
+        private lateinit var tts: TextToSpeech
     }
 
     override fun onCreate() {
         super.onCreate()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+
+        tts = TextToSpeech(this, this)
 
         Toast.makeText(this, "OverlayService started", Toast.LENGTH_SHORT).show()
         Log.d("OverlayService", "onCreate() called")
@@ -79,6 +84,8 @@ class OverlayService : Service() {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }.also(this@OverlayService::startActivity)
                 }
+
+//                MyAccessibilityService.getInstance()?.clearStoredText() // clear the text
             }
             findViewById<ImageButton>(R.id.btn_undo).setOnClickListener {
                 Log.d("OverlayService", "Undo clicked")
@@ -111,13 +118,17 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        overlayView?.let {
-            try {
-                windowManager.removeView(it)
-                Log.d("OverlayService", "Overlay view removed")
-            } catch (e: IllegalArgumentException) {
-                Log.w("OverlayService", "Overlay view not attached, skipping removal")
-            }
+        // Shutdown TTS
+        tts.stop()
+        tts.shutdown()
+        // … remove overlay …
+    }
+
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            tts.language = Locale.getDefault()
+        } else {
+            Log.w("OverlayService","TTS init failed, status=$status")
         }
     }
 
