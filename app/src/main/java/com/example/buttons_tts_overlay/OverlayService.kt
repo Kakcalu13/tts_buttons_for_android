@@ -109,7 +109,14 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                     or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.CENTER
+            // Dock to the right side, vertically centered
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            // Optional: inset 16dp from right edge (convert dp to px)
+            val insetPx = (16 * resources.displayMetrics.density).toInt()
+            x = insetPx
+            // Move up by 50dp
+            val shiftUpPx = (100 * resources.displayMetrics.density).toInt()
+            y = -shiftUpPx
         }
 
         windowManager.addView(overlayView, params)
