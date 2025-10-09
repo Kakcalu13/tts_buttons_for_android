@@ -143,12 +143,12 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
     private fun forcePhoneSpeaker() {
         try {
             // Set audio mode to IN_COMMUNICATION (like a phone call)
-            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+            audioManager.mode = AudioManager.MODE_NORMAL
             audioManager.isSpeakerphoneOn = true
 
-            // Set volume for music stream to ensure audibility
-            val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, maxVolume, 0)
+//            // Set volume for music stream to ensure audibility
+//            val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+//            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, maxVolume, 0)
 
             Log.d("OverlayService", "Forced phone speaker mode")
         } catch (e: Exception) {
