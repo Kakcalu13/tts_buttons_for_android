@@ -6,6 +6,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.view.accessibility.AccessibilityNodeInfo
+import android.media.AudioAttributes
 import android.content.ClipboardManager
 import android.content.Context
 import java.util.Locale
@@ -77,20 +78,26 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                     return@setOnClickListener
                 }
 
-                // 2. Read the focused node's text directly
                 val selectedText = focusNode.text?.toString().orEmpty()
                 if (selectedText.isBlank()) {
                     Toast.makeText(this@OverlayService, "Nothing selected", Toast.LENGTH_SHORT).show()
                 } else {
                     Toast.makeText(this@OverlayService, "Reading: $selectedText", Toast.LENGTH_SHORT).show()
 
-                    // Force audio to phone speaker (not aux/headphones)
+                    // Force phone speaker BEFORE speaking
                     forcePhoneSpeaker()
 
-                    // Use TTS directly instead of ACTION_PROCESS_TEXT intent
+                    // Use AudioAttributes to force internal speaker routing
+                    val audioAttributes = AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)  // Treats like phone call
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)  // Speech content
+                        .build()
+
                     val params = Bundle().apply {
-                        putString(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC.toString())
+                        putString(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_VOICE_CALL.toString())
                     }
+
+                    // Speak with voice call stream (bypasses aux routing)
                     tts.speak(selectedText, TextToSpeech.QUEUE_FLUSH, params, "UTT_ID")
                 }
             }
@@ -135,20 +142,15 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
 
     private fun forcePhoneSpeaker() {
         try {
-            // Save current audio mode
-            val originalMode = audioManager.mode
-
-            // Set mode to normal and force speaker on
-            audioManager.mode = AudioManager.MODE_NORMAL
+            // Set audio mode to IN_COMMUNICATION (like a phone call)
+            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
             audioManager.isSpeakerphoneOn = true
 
-            // Alternative approach - set stream volume to ensure it uses phone speaker
-            audioManager.setStreamVolume(
-                AudioManager.STREAM_MUSIC,
-                audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
-                0
-            )
+            // Set volume for music stream to ensure audibility
+            val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, maxVolume, 0)
 
+            Log.d("OverlayService", "Forced phone speaker mode")
         } catch (e: Exception) {
             Log.w("OverlayService", "Failed to force phone speaker: ${e.message}")
         }
