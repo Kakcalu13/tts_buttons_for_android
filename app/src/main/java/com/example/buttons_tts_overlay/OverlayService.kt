@@ -1,10 +1,13 @@
 package com.example.buttons_tts_overlay
 
+import android.media.AudioManager
+import android.os.Bundle
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.view.accessibility.AccessibilityNodeInfo
 import android.content.ClipboardManager
+import android.content.Context
 import java.util.Locale
 import android.speech.tts.TextToSpeech
 import android.content.Intent
@@ -23,6 +26,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
     private lateinit var windowManager: WindowManager
     private lateinit var tts: TextToSpeech
     private var overlayView: View? = null
+    private lateinit var audioManager: AudioManager
 
     companion object {
         private const val CHANNEL_ID = "overlay_service_channel"
@@ -35,6 +39,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
         tts = TextToSpeech(this, this)
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
         Toast.makeText(this, "OverlayService started", Toast.LENGTH_SHORT).show()
         Log.d("OverlayService", "onCreate() called")
@@ -72,21 +77,26 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                     return@setOnClickListener
                 }
 
-                // 2. Read the focused node’s text directly
+                // 2. Read the focused node's text directly
                 val selectedText = focusNode.text?.toString().orEmpty()
                 if (selectedText.isBlank()) {
                     Toast.makeText(this@OverlayService, "Nothing selected", Toast.LENGTH_SHORT).show()
                 } else {
                     Toast.makeText(this@OverlayService, "Reading: $selectedText", Toast.LENGTH_SHORT).show()
-                    Intent(Intent.ACTION_PROCESS_TEXT).apply {
-                        putExtra(Intent.EXTRA_PROCESS_TEXT, selectedText)
-                        type = "text/plain"
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }.also(this@OverlayService::startActivity)
-                }
 
-//                MyAccessibilityService.getInstance()?.clearStoredText() // clear the text
+                    // Force audio to phone speaker (not aux/headphones)
+                    forcePhoneSpeaker()
+
+                    // Use TTS directly instead of ACTION_PROCESS_TEXT intent
+                    val params = Bundle().apply {
+                        putString(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC.toString())
+                    }
+                    tts.speak(selectedText, TextToSpeech.QUEUE_FLUSH, params, "UTT_ID")
+                }
             }
+
+
+
             findViewById<ImageButton>(R.id.btn_undo).setOnClickListener {
                 Log.d("OverlayService", "Undo clicked")
                 MyAccessibilityService.getInstance()?.performUndo()
@@ -123,8 +133,31 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         Log.d("OverlayService", "Overlay view added")
     }
 
+    private fun forcePhoneSpeaker() {
+        try {
+            // Save current audio mode
+            val originalMode = audioManager.mode
+
+            // Set mode to normal and force speaker on
+            audioManager.mode = AudioManager.MODE_NORMAL
+            audioManager.isSpeakerphoneOn = true
+
+            // Alternative approach - set stream volume to ensure it uses phone speaker
+            audioManager.setStreamVolume(
+                AudioManager.STREAM_MUSIC,
+                audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
+                0
+            )
+
+        } catch (e: Exception) {
+            Log.w("OverlayService", "Failed to force phone speaker: ${e.message}")
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        audioManager.isSpeakerphoneOn = false
+        audioManager.mode = AudioManager.MODE_NORMAL
         overlayView?.let {
             try {
                 windowManager.removeView(it)
