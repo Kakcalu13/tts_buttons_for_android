@@ -65,7 +65,7 @@ The overlay appears as a vertical column of buttons on the right side of your sc
 | Button | Function | Description |
 |--------|----------|-------------|
 | 📝 **Select All** | `performSelectAllAndCopy()` | Selects all text in focused input field and copies to clipboard |
-| 🔊 **Read Aloud** | `getCurrentScreenText()` + TTS | Reads text from focused field using text-to-speech |
+| 🔊 **Read Aloud** | `focusNode.text?.toString().orEmpty()` + TTS | Reads text from focused field using text-to-speech |
 | ↩️ **Undo** | `performUndo()` | Restores the last cleared text to the input field |
 | ⏹️ **Stop** | `stopSelf()` | Stops TTS playback and closes the overlay service |
 
@@ -160,7 +160,7 @@ app/src/main/res/
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the Apache-2.0 license - see the LICENSE file for details.
 
 ## Acknowledgments
 
