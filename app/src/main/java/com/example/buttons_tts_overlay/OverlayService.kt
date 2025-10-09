@@ -1,10 +1,14 @@
 package com.example.buttons_tts_overlay
 
+import android.media.AudioManager
+import android.os.Bundle
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.view.accessibility.AccessibilityNodeInfo
+import android.media.AudioAttributes
 import android.content.ClipboardManager
+import android.content.Context
 import java.util.Locale
 import android.speech.tts.TextToSpeech
 import android.content.Intent
@@ -23,6 +27,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
     private lateinit var windowManager: WindowManager
     private lateinit var tts: TextToSpeech
     private var overlayView: View? = null
+    private lateinit var audioManager: AudioManager
 
     companion object {
         private const val CHANNEL_ID = "overlay_service_channel"
@@ -35,6 +40,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
         tts = TextToSpeech(this, this)
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
         Toast.makeText(this, "OverlayService started", Toast.LENGTH_SHORT).show()
         Log.d("OverlayService", "onCreate() called")
@@ -72,21 +78,32 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                     return@setOnClickListener
                 }
 
-                // 2. Read the focused node’s text directly
                 val selectedText = focusNode.text?.toString().orEmpty()
                 if (selectedText.isBlank()) {
                     Toast.makeText(this@OverlayService, "Nothing selected", Toast.LENGTH_SHORT).show()
                 } else {
                     Toast.makeText(this@OverlayService, "Reading: $selectedText", Toast.LENGTH_SHORT).show()
-                    Intent(Intent.ACTION_PROCESS_TEXT).apply {
-                        putExtra(Intent.EXTRA_PROCESS_TEXT, selectedText)
-                        type = "text/plain"
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }.also(this@OverlayService::startActivity)
-                }
 
-//                MyAccessibilityService.getInstance()?.clearStoredText() // clear the text
+                    // Force phone speaker BEFORE speaking
+                    forcePhoneSpeaker()
+
+                    // Use AudioAttributes to force internal speaker routing
+                    val audioAttributes = AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)  // Treats like phone call
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)  // Speech content
+                        .build()
+
+                    val params = Bundle().apply {
+                        putString(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_VOICE_CALL.toString())
+                    }
+
+                    // Speak with voice call stream (bypasses aux routing)
+                    tts.speak(selectedText, TextToSpeech.QUEUE_FLUSH, params, "UTT_ID")
+                }
             }
+
+
+
             findViewById<ImageButton>(R.id.btn_undo).setOnClickListener {
                 Log.d("OverlayService", "Undo clicked")
                 MyAccessibilityService.getInstance()?.performUndo()
@@ -123,8 +140,26 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         Log.d("OverlayService", "Overlay view added")
     }
 
+    private fun forcePhoneSpeaker() {
+        try {
+            // Set audio mode to IN_COMMUNICATION (like a phone call)
+            audioManager.mode = AudioManager.MODE_NORMAL
+            audioManager.isSpeakerphoneOn = true
+
+//            // Set volume for music stream to ensure audibility
+//            val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+//            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, maxVolume, 0)
+
+            Log.d("OverlayService", "Forced phone speaker mode")
+        } catch (e: Exception) {
+            Log.w("OverlayService", "Failed to force phone speaker: ${e.message}")
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        audioManager.isSpeakerphoneOn = false
+        audioManager.mode = AudioManager.MODE_NORMAL
         overlayView?.let {
             try {
                 windowManager.removeView(it)
