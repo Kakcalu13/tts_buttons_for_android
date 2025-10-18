@@ -1,120 +1,65 @@
 package com.example.buttons_tts_overlay
 
-import android.media.AudioManager
-import android.os.Bundle
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
-import android.view.accessibility.AccessibilityNodeInfo
-import android.media.AudioAttributes
-import android.content.ClipboardManager
 import android.content.Context
-import java.util.Locale
-import android.speech.tts.TextToSpeech
 import android.content.Intent
 import android.graphics.PixelFormat
+import android.media.AudioAttributes
+import android.media.AudioManager
 import android.os.Build
+import android.os.Bundle
 import android.os.IBinder
 import android.provider.Settings
+import android.speech.tts.TextToSpeech
 import android.util.Log
 import android.view.*
+import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.ImageButton
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
+import java.util.Locale
 
 class OverlayService : Service(), TextToSpeech.OnInitListener {
 
     private lateinit var windowManager: WindowManager
     private lateinit var tts: TextToSpeech
-    private var overlayView: View? = null
     private lateinit var audioManager: AudioManager
+    private var overlayView: View? = null
+    private lateinit var params: WindowManager.LayoutParams
+
+    // For drag handling
+    private var initialX = 0
+    private var initialY = 0
+    private var initialTouchX = 0f
+    private var initialTouchY = 0f
 
     companion object {
         private const val CHANNEL_ID = "overlay_service_channel"
         private const val NOTIFICATION_ID = 1234
-        private lateinit var tts: TextToSpeech
     }
 
     override fun onCreate() {
         super.onCreate()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-
-        tts = TextToSpeech(this, this)
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-
-        Toast.makeText(this, "OverlayService started", Toast.LENGTH_SHORT).show()
-        Log.d("OverlayService", "onCreate() called")
+        tts = TextToSpeech(this, this)
 
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
 
         if (!Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, "Overlay permission missing, stopping", Toast.LENGTH_LONG).show()
-            Log.d("OverlayService", "Missing overlay permission")
+            Toast.makeText(this, "Overlay permission missing", Toast.LENGTH_LONG).show()
             stopSelf()
             return
         }
 
-        // Inflate the layout containing four buttons
+        // Inflate overlay layout
         overlayView = LayoutInflater.from(this).inflate(R.layout.overlay_layout, null)
 
-        overlayView?.apply {
-            findViewById<ImageButton>(R.id.btn_select_all).setOnClickListener {
-                Log.d("OverlayService", "Select All clicked")
-                MyAccessibilityService.getInstance()?.performSelectAllAndCopy()
-            }
-            findViewById<ImageButton>(R.id.btn_read_aloud).setOnClickListener {
-                Log.d("OverlayService", "Read Aloud clicked")
-
-                // 1. Get the accessibility root and focused node
-                val rootNode = MyAccessibilityService.getInstance()?.rootInActiveWindow
-                if (rootNode == null) {
-                    Toast.makeText(this@OverlayService, "Accessibility root unavailable", Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
-                }
-                val focusNode = rootNode.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-                if (focusNode == null) {
-                    Toast.makeText(this@OverlayService, "No input focused", Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
-                }
-
-                val selectedText = focusNode.text?.toString().orEmpty()
-                if (selectedText.isBlank()) {
-                    Toast.makeText(this@OverlayService, "Nothing selected", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(this@OverlayService, "Reading: $selectedText", Toast.LENGTH_SHORT).show()
-
-                    // Force phone speaker BEFORE speaking
-                    forcePhoneSpeaker()
-
-                    // Use AudioAttributes to force internal speaker routing
-                    val audioAttributes = AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)  // Treats like phone call
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)  // Speech content
-                        .build()
-
-                    val params = Bundle().apply {
-                        putString(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_VOICE_CALL.toString())
-                    }
-
-                    // Speak with voice call stream (bypasses aux routing)
-                    tts.speak(selectedText, TextToSpeech.QUEUE_FLUSH, params, "UTT_ID")
-                }
-            }
-
-
-
-            findViewById<ImageButton>(R.id.btn_undo).setOnClickListener {
-                Log.d("OverlayService", "Undo clicked")
-                MyAccessibilityService.getInstance()?.performUndo()
-            }
-            findViewById<ImageButton>(R.id.btn_stop_tts).setOnClickListener {
-                Log.d("OverlayService", "Stop clicked, stopping service")
-                stopSelf()
-            }
-        }
-
-        val params = WindowManager.LayoutParams(
+        // Single LayoutParams instance
+        params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
@@ -126,47 +71,88 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                     or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
-            // Dock to the right side, vertically centered
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
-            // Optional: inset 16dp from right edge (convert dp to px)
-            val insetPx = (16 * resources.displayMetrics.density).toInt()
-            x = insetPx
-            // Move up by 50dp
-            val shiftUpPx = (100 * resources.displayMetrics.density).toInt()
-            y = -shiftUpPx
+            x = (16 * resources.displayMetrics.density).toInt()    // inset from right
+            y = -(50 * resources.displayMetrics.density).toInt()   // shift up
         }
 
+        // Drag handle on topbar
+        overlayView?.findViewById<View>(R.id.topbar)?.setOnTouchListener { _, ev ->
+            when (ev.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    initialX = params.x
+                    initialY = params.y
+                    initialTouchX = ev.rawX
+                    initialTouchY = ev.rawY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    // Subtract deltaX to move in the expected direction
+                    params.x = initialX - (ev.rawX - initialTouchX).toInt()
+                    params.y = initialY + (ev.rawY - initialTouchY).toInt()
+                    windowManager.updateViewLayout(overlayView, params)
+                    true
+                }
+                else -> false
+            }
+        }
+
+
+        // Button listeners
+        overlayView?.apply {
+            findViewById<ImageButton>(R.id.btn_select_all).setOnClickListener {
+                MyAccessibilityService.getInstance()?.performSelectAllAndCopy()
+            }
+
+            findViewById<ImageButton>(R.id.btn_read_aloud).setOnClickListener {
+                // Get focused input text
+                val root = MyAccessibilityService.getInstance()?.rootInActiveWindow
+                if (root == null) {
+                    Toast.makeText(this@OverlayService, "Accessibility root unavailable", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                val focus = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+                if (focus == null) {
+                    Toast.makeText(this@OverlayService, "No input focused", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                val text = focus.text?.toString().orEmpty()
+                if (text.isBlank()) {
+                    Toast.makeText(this@OverlayService, "Nothing selected", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this@OverlayService, "Reading: $text", Toast.LENGTH_SHORT).show()
+                    forcePhoneSpeaker()
+                    // Speak via music stream
+                    val paramsBundle = Bundle().apply {
+                        putString(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC.toString())
+                    }
+                    tts.speak(text, TextToSpeech.QUEUE_FLUSH, paramsBundle, "UTT_ID")
+                }
+            }
+
+            findViewById<ImageButton>(R.id.btn_undo).setOnClickListener {
+//                MyAccessibilityService.getInstance()?.performUndo()
+                tts.stop()
+            }
+
+            findViewById<ImageButton>(R.id.btn_stop_tts).setOnClickListener {
+                Log.d("OverlayService", "Stop clicked, stopping service")
+                stopSelf()
+            }
+        }
+
+        // Add overlay to window
         windowManager.addView(overlayView, params)
-        Log.d("OverlayService", "Overlay view added")
+        Log.d("OverlayService", "Overlay added")
     }
 
+    // Force audio to internal speaker
     private fun forcePhoneSpeaker() {
         try {
-            // Set audio mode to IN_COMMUNICATION (like a phone call)
             audioManager.mode = AudioManager.MODE_NORMAL
             audioManager.isSpeakerphoneOn = true
-
-//            // Set volume for music stream to ensure audibility
-//            val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-//            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, maxVolume, 0)
-
-            Log.d("OverlayService", "Forced phone speaker mode")
         } catch (e: Exception) {
-            Log.w("OverlayService", "Failed to force phone speaker: ${e.message}")
-        }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        audioManager.isSpeakerphoneOn = false
-        audioManager.mode = AudioManager.MODE_NORMAL
-        overlayView?.let {
-            try {
-                windowManager.removeView(it)
-                Log.d("OverlayService", "Overlay view removed")
-            } catch (e: IllegalArgumentException) {
-                Log.w("OverlayService", "Overlay view not attached, skipping removal")
-            }
+            Log.w("OverlayService", "Speakerforce failed: ${e.message}")
         }
     }
 
@@ -174,7 +160,20 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         if (status == TextToSpeech.SUCCESS) {
             tts.language = Locale.getDefault()
         } else {
-            Log.w("OverlayService","TTS init failed, status=$status")
+            Log.w("OverlayService", "TTS init failed: $status")
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        tts.stop()
+        tts.shutdown()
+        audioManager.isSpeakerphoneOn = false
+        audioManager.mode = AudioManager.MODE_NORMAL
+        overlayView?.let {
+            try {
+                windowManager.removeView(it)
+            } catch (_: IllegalArgumentException) { }
         }
     }
 
@@ -182,16 +181,15 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel(CHANNEL_ID, "Overlay Service", NotificationManager.IMPORTANCE_LOW).also { channel ->
-                getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
-            }
+            NotificationChannel(CHANNEL_ID, "Overlay Service", NotificationManager.IMPORTANCE_LOW)
+                .also { getSystemService(NotificationManager::class.java).createNotificationChannel(it) }
         }
     }
 
     private fun buildNotification() =
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Overlay Active")
-            .setContentText("Use buttons or tap Stop")
+            .setContentText("Use buttons to control TTS")
             .setSmallIcon(R.drawable.ic_overlay)
             .build()
 }
