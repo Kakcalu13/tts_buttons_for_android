@@ -121,12 +121,17 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                     Toast.makeText(this@OverlayService, "Nothing selected", Toast.LENGTH_SHORT).show()
                 } else {
                     Toast.makeText(this@OverlayService, "Reading: $text", Toast.LENGTH_SHORT).show()
-                    forcePhoneSpeaker()
-                    // Speak via music stream
-                    val paramsBundle = Bundle().apply {
-                        putString(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC.toString())
+
+                    // Launch the system Read Aloud UI with built-in preview/highlighting
+                    Intent(Intent.ACTION_PROCESS_TEXT).apply {
+                        putExtra(Intent.EXTRA_PROCESS_TEXT, text)
+                        putExtra(Intent.EXTRA_PROCESS_TEXT_READONLY, false)
+                        type = "text/plain"
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }.also {
+                        startActivity(it)
+//                        stopSelf()
                     }
-                    tts.speak(text, TextToSpeech.QUEUE_FLUSH, paramsBundle, "UTT_ID")
                 }
             }
 
